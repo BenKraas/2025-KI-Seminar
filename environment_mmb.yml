@@ -1,0 +1,10 @@
+name: KI2025
+channels:
+  - conda-forge
+dependencies:
+  - cudatoolkit=11.2.2
+  - cudnn=8.1.0
+  - geopandas
+  - ipykernel
+  - rasterio
+  - tensorflow
