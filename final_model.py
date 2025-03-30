@@ -37,6 +37,7 @@ Set the level of the bprint function.
 bprint_console_level = 1
 bprint_logging_level = 0
 
+# Utility functions
 def utility_init_logging():
     """
     Written by BK
@@ -54,6 +55,13 @@ def utility_init_logging():
     start_time = time.time()
     logging.info(f"Start time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))}")
     return
+
+def utility_show_model_summary(model: Sequential):
+    """
+    Show the model summary
+    """
+    bprint("Showing the model summary", level="starting")
+    model.summary()
 
 def bprint(text, indent=0, level="info", show="", **kwargs):
     """
@@ -145,7 +153,8 @@ def bprint(text, indent=0, level="info", show="", **kwargs):
             log.write(f"{prefix}{indentation}{text}\n")
 
     return
-    
+
+# Preprocessing functions
 def preprocessing_get_filelist(data_fdir_path: Path) -> dict:
     """
     Written by BK
@@ -362,7 +371,86 @@ def preprocessing_get_dict_tensors(fdict: dict, grid_identifier: str) -> tuple:
 
     return X_tensor, y_tensor
 
-def preprocessing_model_01(input_shape: tuple) -> Sequential:
+def preprocessing_prepare_training_data(path: Path) -> None:
+    """
+    Build the training data from raw dataset by loading file lists, 
+    splitting into train/test sets, and creating the training tensors.
+
+    Parameters:
+        path (Path): Path to the directory containing the data files.
+
+    Returns:
+        None
+    """
+    # Call the function to get the file names
+    fdict = preprocessing_get_filelist(path)
+
+    # Split the file list into train and test sets
+    train_fdict, test_fdict = preprocessing_train_test_split(fdict)
+
+    # Get the entire training data tensor
+    bprint("Loading training data", level="starting")
+
+    final_tensors = {
+        "X_train": [],
+        "y_train": [],
+        "X_test": [],
+        "y_test": []
+    }
+
+    for tt_dict in [train_fdict, test_fdict]:
+
+        for grid_identifier, grid_dict in tt_dict.items():
+            bprint(f"Loading data for grid {grid_identifier}", level="debug")
+            X_data, y_data = preprocessing_get_dict_tensors(grid_dict, grid_identifier)
+            bprint(f"Data loaded successfully for grid {grid_identifier}", level="debug", show="success")
+
+            # Check if the data is empty
+            if X_data is None or y_data is None:
+                bprint(f"X_train or y_train is None", level="error")
+                continue
+
+            # Insert the data into the final tensor
+            if grid_dict["train_or_test"] == "train":
+                bprint(f"Data is for training set", level="debug")
+                final_tensors["X_train"].append(X_data)
+                final_tensors["y_train"].append(y_data)
+            elif grid_dict["train_or_test"] == "test":
+                bprint(f"Data is for test set", level="debug")
+                final_tensors["X_test"].append(X_data)
+                final_tensors["y_test"].append(y_data)
+
+            bprint(f"Data inserted into final tensor for grid {grid_identifier}", level="debug")
+
+
+    # Convert the final tensor to a numpy array
+    bprint("Converting the final tensor to a numpy array", level="starting")
+    for key, value in final_tensors.items():
+        final_tensors[key] = np.array(value)
+        bprint(f"Final tensor {key} shape: {final_tensors[key].shape}", level="info")
+
+    # Save the final tensor to a file
+    bprint("Saving the final tensors to a file", level="starting")
+    for key, value in final_tensors.items():
+
+        np.save(f"data/final_tensor_{key}.npy", value)
+        bprint(f"Final tensor {key} saved to file", level="info")
+    
+    bprint("Final tensors saved successfully", level="success")
+
+    return 
+
+def preprocess_force_rebuild():
+    bprint("Session mode: {session_mode} - Rebuilding the npy tensors", level="info")
+    bprint("This will delete all existing npy tensors", level="warning")
+    input("Press Enter to confirm this action...")
+    # Rebuild the npy tensors
+    preprocessing_prepare_training_data(Path("data/static"))
+    bprint("Npy tensors rebuilt successfully", level="success")
+    exit(0)
+
+# Model compilation functions
+def compilation_model_01(input_shape: tuple) -> Sequential:
     """
     This model uses a reduction and upscaling approach with intermediate data feeding to preserve pixel values.
     It takes as input a 4D tensor of shape (item_id, height, width, channels) and outputs a tensor of shape (height, width, 1).
@@ -395,7 +483,7 @@ def preprocessing_model_01(input_shape: tuple) -> Sequential:
     bprint("Model created successfully with reduction and upscaling", level="success")
     return model
 
-def preprocessing_model_02(input_shape: tuple) -> Sequential:
+def compilation_model_02(input_shape: tuple) -> Sequential:
     """
     This model uses a reduction and upscaling approach with intermediate data feeding to preserve pixel values.
     It takes as input a 4D tensor of shape (item_id, height, width, channels) and outputs a tensor of shape (height, width, 1).
@@ -441,7 +529,7 @@ def weighted_mse(y_true, y_pred):
     weights = tf.where(tf.greater(y_true, 0.1), 5.0, 1.0)
     return tf.reduce_mean(weights * tf.square(y_true - y_pred))
 
-def preprocessing_model_03(input_shape: tuple, learning_rate: float = 0.001) -> Sequential:
+def compilation_model_03(input_shape: tuple, learning_rate: float = 0.001) -> Sequential:
     """
     Mainly written by Claude Sonnet 3.7
     Enhanced preprocessing model with better initialization, skip connections,
@@ -515,117 +603,20 @@ def preprocessing_model_03(input_shape: tuple, learning_rate: float = 0.001) -> 
     bprint("Improved model created successfully with skip connections and better activations", level="success")
     return model
 
-def prepare_training_data(path: Path) -> None:
-    """
-    Build the training data from raw dataset by loading file lists, 
-    splitting into train/test sets, and creating the training tensors.
 
-    Parameters:
-        path (Path): Path to the directory containing the data files.
-
-    Returns:
-        None
-    """
-    # Call the function to get the file names
-    fdict = preprocessing_get_filelist(path)
-
-    # Split the file list into train and test sets
-    train_fdict, test_fdict = preprocessing_train_test_split(fdict)
-
-    # Get the entire training data tensor
-    bprint("Loading training data", level="starting")
-
-    final_tensors = {
-        "X_train": [],
-        "y_train": [],
-        "X_test": [],
-        "y_test": []
-    }
-
-    for tt_dict in [train_fdict, test_fdict]:
-
-        for grid_identifier, grid_dict in tt_dict.items():
-            bprint(f"Loading data for grid {grid_identifier}", level="debug")
-            X_data, y_data = preprocessing_get_dict_tensors(grid_dict, grid_identifier)
-            bprint(f"Data loaded successfully for grid {grid_identifier}", level="debug", show="success")
-
-            # Check if the data is empty
-            if X_data is None or y_data is None:
-                bprint(f"X_train or y_train is None", level="error")
-                continue
-
-            # Insert the data into the final tensor
-            if grid_dict["train_or_test"] == "train":
-                bprint(f"Data is for training set", level="debug")
-                final_tensors["X_train"].append(X_data)
-                final_tensors["y_train"].append(y_data)
-            elif grid_dict["train_or_test"] == "test":
-                bprint(f"Data is for test set", level="debug")
-                final_tensors["X_test"].append(X_data)
-                final_tensors["y_test"].append(y_data)
-
-            bprint(f"Data inserted into final tensor for grid {grid_identifier}", level="debug")
-
-
-    # Convert the final tensor to a numpy array
-    bprint("Converting the final tensor to a numpy array", level="starting")
-    for key, value in final_tensors.items():
-        final_tensors[key] = np.array(value)
-        bprint(f"Final tensor {key} shape: {final_tensors[key].shape}", level="info")
-
-    # Save the final tensor to a file
-    bprint("Saving the final tensors to a file", level="starting")
-    for key, value in final_tensors.items():
-
-        np.save(f"data/final_tensor_{key}.npy", value)
-        bprint(f"Final tensor {key} saved to file", level="info")
-    
-    bprint("Final tensors saved successfully", level="success")
-
-    return 
-
-def utility_show_model_summary(model: Sequential):
-    """
-    Show the model summary
-    """
-    bprint("Showing the model summary", level="starting")
-    model.summary()
-
-def cli_parser():
-    """
-    Command line parser for the script
-    """
-    import argparse
-    parser = argparse.ArgumentParser(description="Train and test the model")
-    parser.add_argument("-m", "--mode", type=str, choices=["train", "test", "both"], default="train", help="Mode of operation")
-    parser.add_argument("-e", "--epochs", type=int, default=5, help="Number of epochs to train the model")
-    parser.add_argument("-b", "--batch_size", type=int, default=1, help="Batch size to use for training")
-    parser.add_argument("-l", "--learning_rate", type=float, default=0.001, help="Learning rate to use for training")
-    parser.add_argument("--force_rebuild", action="store_true", help="Force rebuild the npy tensors")
-    args = parser.parse_args()
-    return args
-
-def preprocess_force_rebuild():
-    bprint("Session mode: {session_mode} - Rebuilding the npy tensors", level="info")
-    bprint("This will delete all existing npy tensors", level="warning")
-    input("Press Enter to confirm this action...")
-        # Rebuild the npy tensors
-    prepare_training_data(Path("data/static"))
-    bprint("Npy tensors rebuilt successfully", level="success")
-    exit(0)
-
+# Main process functions
 def main_process_train_model(script_dir, args, session_mode):
     bprint(f"Session mode: {session_mode} - Training model", level="info")
 
         # Check if data dir contains tensors
     final_tensor_X_train = script_dir / "data" / "final_tensor_X_train.npy"
     if not final_tensor_X_train.is_file():
-        input("Final tensors not found, preparing training data. Press Enter to confirm...")
-        bprint("Final tensors not found, preparing training data", level="warning")
-        bprint("Preparing training data", level="starting")
-        prepare_training_data(Path("data/static"))
-        bprint("Training data prepared successfully", level="success")
+        bprint("Tensors not found, requiring rebuild, please run the script with --mode force_rebuild first", level="critical")
+        bprint("Exiting the script", level="error")
+        input("Press Enter to exit...")
+        exit(1)
 
+    # Load the final tensors
     bprint("Found final tensors, loading training data", level="starting")
     final_tensor_X_train = np.load("data/final_tensor_X_train.npy")
     final_tensor_y_train = np.load("data/final_tensor_y_train.npy")
@@ -637,11 +628,9 @@ def main_process_train_model(script_dir, args, session_mode):
 
         # Initialize the model
     bprint("Initializing the model", level="starting")
-    model = preprocessing_model_03(input_shape=(train_tiles_number, 1000, 1000, 6), learning_rate=args.learning_rate)
+    model = compilation_model_03(input_shape=(train_tiles_number, 1000, 1000, 6), learning_rate=args.learning_rate)
     utility_show_model_summary(model)
     bprint("Model initialized successfully", level="success")
-
-    input("Press Enter to continue...")
 
         # Train the model
     bprint("Training the model", level="starting")
@@ -689,78 +678,112 @@ def main_process_train_model(script_dir, args, session_mode):
     keras.backend.clear_session()
     bprint("Session cleared successfully", level="success")
 
+def main_process_test_model(session_mode):
+    bprint(f"Session mode: {session_mode} - Testing model", level="starting")
+
+        # Load the model
+    bprint("Loading the model", level="starting")
+    model = keras.models.load_model("models/final_model.keras")
+    bprint("Model loaded successfully", level="success")
+
+
+        # Evaluate on test data
+    try:
+        bprint("Loading test data", level="starting")
+        final_tensor_X_test = np.load("data/final_tensor_X_test.npy")
+        final_tensor_y_test = np.load("data/final_tensor_y_test.npy")
+        bprint("Test data loaded successfully", level="success")
+    except FileNotFoundError:
+        # critical error - test data not found
+        bprint("Test data not found - please run the script with --mode force_rebuild first", level="critical")
+        bprint("Exiting the script", level="error")
+        input("Press Enter to exit...")
+        exit(1)
+        
+    # Prediction
+    bprint("Predicting on test data", level="starting")
+    predictions = model.predict(final_tensor_X_test[0:4], batch_size=1)
+    bprint("Predictions made successfully", level="success")
+
+    # Show the first three predictions next to the original data
+    bprint("Showing predictions", level="starting")
+    plot, ax = plt.subplots(3, 3, figsize=(15, 15))
+
+    for i in range(3):
+        # Ground truth
+        # Calculate the min and max of the ground truth tensor
+        gt_min = np.min(final_tensor_y_test)
+        gt_max = np.max(final_tensor_y_test)
+
+        im1 = ax[i, 0].imshow(final_tensor_y_test[i, :, :, 0], cmap='viridis', vmin=gt_min, vmax=gt_max)
+        ax[i, 0].set_title(f"Ground Truth {i+1}")
+        plot.colorbar(im1, ax=ax[i, 0], orientation='vertical')
+
+        # Prediction clipped to ground truth min/max
+        im2 = ax[i, 1].imshow(np.clip(predictions[i, :, :, 0], gt_min, gt_max), cmap='viridis', vmin=gt_min, vmax=gt_max)
+        ax[i, 1].set_title(f"Prediction {i+1} (Clipped to GT)")
+        plot.colorbar(im2, ax=ax[i, 1], orientation='vertical')
+
+        # Prediction with its own min/max
+        im3 = ax[i, 2].imshow(predictions[i, :, :, 0], cmap='viridis')
+        ax[i, 2].set_title(f"Prediction {i+1} (Own Min/Max)")
+        plot.colorbar(im3, ax=ax[i, 2], orientation='vertical')
+
+    plot.tight_layout()
+    plot.show()
+
+    input("Press Enter to continue...")
+
+    # Save to file with timestamp into data/pngs
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    output_dir = script_dir / "data" / "pngs"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"predictions_{timestamp}.png"
+    plot.savefig(output_path)
+    bprint(f"Predictions saved to {output_path}", level="success")
+
+    # Show the model summary
+    utility_show_model_summary(model)
+    
+    # Show the model architecture
+    bprint("Showing the model architecture", level="starting")
+    tf.keras.utils.plot_model(model, to_file='model.png', show_shapes=True, show_layer_names=True)
+    bprint("Model architecture shown successfully", level="success")
+
+# Command line parser
+def cli_parser():
+    """
+    Command line parser for the script
+    """
+    import argparse
+    parser = argparse.ArgumentParser(description="Train and test the model")
+    parser.add_argument("-m", "--mode", type=str, choices=["train", "test", "both"], default="train", help="Mode of operation")
+    parser.add_argument("-e", "--epochs", type=int, default=5, help="Number of epochs to train the model")
+    parser.add_argument("-b", "--batch_size", type=int, default=1, help="Batch size to use for training")
+    parser.add_argument("-l", "--learning_rate", type=float, default=0.001, help="Learning rate to use for training")
+    parser.add_argument("--force_rebuild", action="store_true", help="Force rebuild the npy tensors")
+    args = parser.parse_args()
+    return args
+
 if __name__ == "__main__":
     # Written by BK with only little help from ChatGPT
     # clear the terminal
     os.system('cls' if os.name == 'nt' else 'clear')
     tf.get_logger().setLevel('WARNING')
     utility_init_logging()
-
     bprint("Starting the script", level="starting")
+
     # Parse the command line arguments
     args = cli_parser()
-
-
-    # Modes of operation:
-    # "train" - train the model
-    # "test" - test the model
-    # "both" - train and test the model
-    # "force_rebuild" - rebuild the npy tensors
 
     session_mode = args.mode
     if args.force_rebuild:
         session_mode = "force_rebuild"
-
-    bprint(f"Starting the script in '{session_mode}' mode", level="starting")
-
-    if session_mode == "force_rebuild":
         preprocess_force_rebuild()
 
     if session_mode == "train" or session_mode == "both":
         main_process_train_model(script_dir, args, session_mode)
 
     if session_mode == "test" or session_mode == "both":
-        bprint(f"Session mode: {session_mode} - Testing model", level="starting")
-
-        # Load the model
-        bprint("Loading the model", level="starting")
-        model = keras.models.load_model("models/final_model.keras")
-        bprint("Model loaded successfully", level="success")
-
-
-        # Evaluate on test data
-        try:
-            bprint("Loading test data", level="starting")
-            final_tensor_X_test = np.load("data/final_tensor_X_test.npy")
-            final_tensor_y_test = np.load("data/final_tensor_y_test.npy")
-            bprint("Test data loaded successfully", level="success")
-        except FileNotFoundError:
-            bprint("Test data not found, preparing test data", level="warning")
-            prepare_training_data(Path("data/static"))
-            bprint("Test data prepared successfully", level="success")
-        
-        # Prediction
-        bprint("Predicting on test data", level="starting")
-        predictions = model.predict(final_tensor_X_test[0:1], batch_size=1)
-        bprint("Predictions made successfully", level="success")
-
-        # Show the predictions next to the original data
-        bprint("Showing predictions", level="starting")
-        plt, ax = plt.subplots(1, 2, figsize=(10, 5))
-        ax[0].imshow(final_tensor_X_test[0, :, :, 0], cmap='gray')
-        ax[0].set_title("Original data")
-        ax[1].imshow(predictions[0, :, :, 0], cmap='gray')
-        ax[1].set_title("Predictions")
-        plt.show()
-
-        input("Press Enter to continue...")
-
-        bprint("Predictions shown successfully", level="success")
-        # Show the model summary
-        utility_show_model_summary(model)
-        # Show the model architecture
-        bprint("Showing the model architecture", level="starting")
-        tf.keras.utils.plot_model(model, to_file='model.png', show_shapes=True, show_layer_names=True)
-
-        bprint("Model architecture shown successfully", level="success")
+        main_process_test_model(session_mode)
         
