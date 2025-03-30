@@ -1,0 +1,40 @@
+input_layer (None, 1000, 1000, 6)
+├── conv2d → (None, 1000, 1000, 32)
+│   ├── batch_norm → (None, 1000, 1000, 32)
+│   ├── leaky_relu → (None, 1000, 1000, 32)
+│   └── [skip1] (Stored for later)
+│
+├── max_pooling → (None, 500, 500, 32)
+│   ├── conv2d → (None, 500, 500, 64)
+│   │   ├── batch_norm → (None, 500, 500, 64)
+│   │   ├── leaky_relu → (None, 500, 500, 64)
+│   │   └── [skip2] (Stored for later)
+│   │
+│   └── max_pooling → (None, 250, 250, 64)
+│       ├── conv2d → (None, 250, 250, 128)
+│       │   ├── batch_norm → (None, 250, 250, 128)
+│       │   ├── leaky_relu → (None, 250, 250, 128)
+│       │   └── dropout → (None, 250, 250, 128)
+│       │
+│       └── bottleneck → (None, 250, 250, 256)
+│           ├── conv2d → (None, 250, 250, 256)
+│           ├── batch_norm → (None, 250, 250, 256)
+│           └── leaky_relu → (None, 250, 250, 256)
+│
+├── conv2d → (None, 250, 250, 128)
+│   ├── batch_norm → (None, 250, 250, 128)
+│   ├── leaky_relu → (None, 250, 250, 128)
+│
+└── up_sampling → (None, 500, 500, 128)
+    ├── concatenate [skip2] → (None, 500, 500, 192)
+    ├── conv2d → (None, 500, 500, 64)
+    │   ├── batch_norm → (None, 500, 500, 64)
+    │   └── leaky_relu → (None, 500, 500, 64)
+    │
+    └── up_sampling → (None, 1000, 1000, 64)
+        ├── concatenate [skip1] → (None, 1000, 1000, 96)
+        ├── conv2d → (None, 1000, 1000, 32)
+        │   ├── batch_norm → (None, 1000, 1000, 32)
+        │   └── leaky_relu → (None, 1000, 1000, 32)
+        │
+        └── output_layer (conv2d) → (None, 1000, 1000, 1) (Linear activation)
