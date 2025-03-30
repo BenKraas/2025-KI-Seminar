@@ -9,7 +9,7 @@
 			"name": "Python Debugger: Main Script",
 			"type": "debugpy",
 			"request": "launch",
-			"program": "main.py",
+			"program": "final_model.py",
 			"console": "integratedTerminal"
 		}
 	]
