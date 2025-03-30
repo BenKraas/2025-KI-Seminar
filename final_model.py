@@ -441,7 +441,7 @@ def weighted_mse(y_true, y_pred):
     weights = tf.where(tf.greater(y_true, 0.1), 5.0, 1.0)
     return tf.reduce_mean(weights * tf.square(y_true - y_pred))
 
-def preprocessing_model_improved(input_shape: tuple) -> Sequential:
+def preprocessing_model_03(input_shape: tuple, learning_rate: float = 0.001) -> Sequential:
     """
     Mainly written by Claude Sonnet 3.7
     Enhanced preprocessing model with better initialization, skip connections,
@@ -507,7 +507,7 @@ def preprocessing_model_improved(input_shape: tuple) -> Sequential:
     # Create and compile the model
     model = Model(inputs=inputs, outputs=outputs)
     model.compile(
-        optimizer=Adam(learning_rate=0.001),
+        optimizer=Adam(learning_rate=learning_rate),
         loss=weighted_mse,
         metrics=['mean_squared_error']
     )
@@ -591,14 +591,114 @@ def utility_show_model_summary(model: Sequential):
     bprint("Showing the model summary", level="starting")
     model.summary()
 
+def cli_parser():
+    """
+    Command line parser for the script
+    """
+    import argparse
+    parser = argparse.ArgumentParser(description="Train and test the model")
+    parser.add_argument("-m", "--mode", type=str, choices=["train", "test", "both"], default="train", help="Mode of operation")
+    parser.add_argument("-e", "--epochs", type=int, default=5, help="Number of epochs to train the model")
+    parser.add_argument("-b", "--batch_size", type=int, default=1, help="Batch size to use for training")
+    parser.add_argument("-l", "--learning_rate", type=float, default=0.001, help="Learning rate to use for training")
+    parser.add_argument("--force_rebuild", action="store_true", help="Force rebuild the npy tensors")
+    args = parser.parse_args()
+    return args
 
-# Main function
+def preprocess_force_rebuild():
+    bprint("Session mode: {session_mode} - Rebuilding the npy tensors", level="info")
+    bprint("This will delete all existing npy tensors", level="warning")
+    input("Press Enter to confirm this action...")
+        # Rebuild the npy tensors
+    prepare_training_data(Path("data/static"))
+    bprint("Npy tensors rebuilt successfully", level="success")
+    exit(0)
+
+def main_process_train_model(script_dir, args, session_mode):
+    bprint(f"Session mode: {session_mode} - Training model", level="info")
+
+        # Check if data dir contains tensors
+    final_tensor_X_train = script_dir / "data" / "final_tensor_X_train.npy"
+    if not final_tensor_X_train.is_file():
+        input("Final tensors not found, preparing training data. Press Enter to confirm...")
+        bprint("Final tensors not found, preparing training data", level="warning")
+        bprint("Preparing training data", level="starting")
+        prepare_training_data(Path("data/static"))
+        bprint("Training data prepared successfully", level="success")
+
+    bprint("Found final tensors, loading training data", level="starting")
+    final_tensor_X_train = np.load("data/final_tensor_X_train.npy")
+    final_tensor_y_train = np.load("data/final_tensor_y_train.npy")
+    bprint("Final tensors training data loaded successfully", level="success")
+
+        # get the number of tiles in the training set
+    train_tiles_number = final_tensor_X_train.shape[0]
+    bprint(f"Number of tiles in the training set: {train_tiles_number}", level="info")
+
+        # Initialize the model
+    bprint("Initializing the model", level="starting")
+    model = preprocessing_model_03(input_shape=(train_tiles_number, 1000, 1000, 6), learning_rate=args.learning_rate)
+    utility_show_model_summary(model)
+    bprint("Model initialized successfully", level="success")
+
+    input("Press Enter to continue...")
+
+        # Train the model
+    bprint("Training the model", level="starting")
+        # Limit GPU memory usage
+    gpus = list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_virtual_device_configuration(
+                        gpu,
+                        [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=5120)]
+                    )
+            bprint("GPU memory limit set to 5GB", level="info")
+        except RuntimeError as e:
+            bprint(f"Error setting GPU memory limit: {e}", level="error")
+
+        # Set memory growth for GPUs
+    for gpu in gpus:
+        try:
+            set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            bprint(f"Error setting memory growth: {e}", level="error")
+
+        # Train the model with GPU
+    bprint("Training the model with GPU", level="starting")
+        # Check if GPU is available
+    if not tf.config.list_physical_devices('GPU'):
+        bprint("GPU not available, training on CPU", level="warning")
+    else:
+        bprint("GPU available, training on GPU", level="success")
+        
+        # Train the model
+    bprint("MAIN: Training the model", level="starting")
+    with tf.device('/GPU:0'):
+        model.fit(final_tensor_X_train, final_tensor_y_train, epochs=args.epochs, batch_size=args.batch_size)
+    bprint("Model trained successfully", level="success")
+
+        # Save the model
+    bprint("Saving the model", level="starting")
+    model.save("models/final_model.keras")
+    bprint("Model saved successfully", level="success")
+
+        # Clear the session
+    bprint("Clearing the session", level="starting")
+    keras.backend.clear_session()
+    bprint("Session cleared successfully", level="success")
+
 if __name__ == "__main__":
     # Written by BK with only little help from ChatGPT
     # clear the terminal
     os.system('cls' if os.name == 'nt' else 'clear')
     tf.get_logger().setLevel('WARNING')
     utility_init_logging()
+
+    bprint("Starting the script", level="starting")
+    # Parse the command line arguments
+    args = cli_parser()
 
 
     # Modes of operation:
@@ -607,93 +707,17 @@ if __name__ == "__main__":
     # "both" - train and test the model
     # "force_rebuild" - rebuild the npy tensors
 
-    session_mode = "test"  # "train", "test", or "both"
+    session_mode = args.mode
+    if args.force_rebuild:
+        session_mode = "force_rebuild"
 
     bprint(f"Starting the script in '{session_mode}' mode", level="starting")
 
     if session_mode == "force_rebuild":
-        bprint("Session mode: {session_mode} - Rebuilding the npy tensors", level="info")
-        bprint("This will delete all existing npy tensors", level="warning")
-        input("Press Enter to confirm this action...")
-        # Rebuild the npy tensors
-        prepare_training_data(Path("data/static"))
-        bprint("Npy tensors rebuilt successfully", level="success")
-        exit(0)
+        preprocess_force_rebuild()
 
     if session_mode == "train" or session_mode == "both":
-        bprint(f"Session mode: {session_mode} - Training model", level="info")
-
-        # Check if data dir contains tensors
-        final_tensor_X_train = script_dir / "data" / "final_tensor_X_train.npy"
-        if not final_tensor_X_train.is_file():
-            input("Final tensors not found, preparing training data. Press Enter to confirm...")
-            bprint("Final tensors not found, preparing training data", level="warning")
-            bprint("Preparing training data", level="starting")
-            prepare_training_data(Path("data/static"))
-            bprint("Training data prepared successfully", level="success")
-
-        bprint("Found final tensors, loading training data", level="starting")
-        final_tensor_X_train = np.load("data/final_tensor_X_train.npy")
-        final_tensor_y_train = np.load("data/final_tensor_y_train.npy")
-        bprint("Final tensors training data loaded successfully", level="success")
-
-        # get the number of tiles in the training set
-        train_tiles_number = final_tensor_X_train.shape[0]
-        bprint(f"Number of tiles in the training set: {train_tiles_number}", level="info")
-
-        # Initialize the model
-        bprint("Initializing the model", level="starting")
-        model = preprocessing_model_improved(input_shape=(train_tiles_number, 1000, 1000, 6))
-        utility_show_model_summary(model)
-        bprint("Model initialized successfully", level="success")
-
-        input("Press Enter to continue...")
-
-        # Train the model
-        bprint("Training the model", level="starting")
-        # Limit GPU memory usage
-        gpus = list_physical_devices('GPU')
-        if gpus:
-            try:
-                for gpu in gpus:
-                    tf.config.experimental.set_virtual_device_configuration(
-                        gpu,
-                        [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=5120)]
-                    )
-                bprint("GPU memory limit set to 5GB", level="info")
-            except RuntimeError as e:
-                bprint(f"Error setting GPU memory limit: {e}", level="error")
-
-        # Set memory growth for GPUs
-        for gpu in gpus:
-            try:
-                set_memory_growth(gpu, True)
-            except RuntimeError as e:
-                bprint(f"Error setting memory growth: {e}", level="error")
-
-        # Train the model with GPU
-        bprint("Training the model with GPU", level="starting")
-        # Check if GPU is available
-        if not tf.config.list_physical_devices('GPU'):
-            bprint("GPU not available, training on CPU", level="warning")
-        else:
-            bprint("GPU available, training on GPU", level="success")
-        
-        # Train the model
-        bprint("MAIN: Training the model", level="starting")
-        with tf.device('/GPU:0'):
-            model.fit(final_tensor_X_train, final_tensor_y_train, epochs=5, batch_size=1, verbose=1)
-        bprint("Model trained successfully", level="success")
-
-        # Save the model
-        bprint("Saving the model", level="starting")
-        model.save("models/final_model.keras")
-        bprint("Model saved successfully", level="success")
-
-        # Clear the session
-        bprint("Clearing the session", level="starting")
-        keras.backend.clear_session()
-        bprint("Session cleared successfully", level="success")
+        main_process_train_model(script_dir, args, session_mode)
 
     if session_mode == "test" or session_mode == "both":
         bprint(f"Session mode: {session_mode} - Testing model", level="starting")
