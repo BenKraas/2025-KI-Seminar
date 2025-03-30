@@ -13,7 +13,7 @@ import tensorflow as tf
 # from tensorflow.keras import layers, models, Input
 
 # python script imports
-from binaries import *
+from deprecated.binaries import *
 
 
 
