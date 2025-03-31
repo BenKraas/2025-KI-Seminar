@@ -34,11 +34,15 @@ The project is structured as follows:
 │   ├── best_unet_model.h5
 │   ├── final_model.keras
 │   └── ... other models
-├── environment_mmb.yml
+├── pngs
+│   └── ... png files of the training results
+├── environment.yaml
+├── environment_short.yml
 ├── final_model.py				- Main file to run and test the model
 ├── model.png
 ├── README.md
 ├── test_gpu_availability.ipynb - Testing notebook to check if GPU is available
+└── ... further less important files
 
 ```
 
