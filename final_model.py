@@ -1,41 +1,43 @@
 # final layout for the model - this time I have a dataset with many tiles, thus I need to do partial fitting
 
 # Imports
-import os
-from pathlib import Path
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import logging
-import rasterio as rio
-import tensorflow as tf
-import re
 import copy
+import logging
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import pandas as pd
+import rasterio as rio
+import re
+import tensorflow as tf
+import time
+
+from pathlib import Path
 from tensorflow import keras
 from tensorflow.keras import layers, models
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization, Input, UpSampling2D
 from tensorflow.keras.optimizers import Adam
 from tensorflow.config.experimental import list_physical_devices, set_memory_growth
-import time
 
-# setup globals
-script_dir = Path(__file__).resolve().parent
 
 # Set the logging level to WARNING to suppress TensorFlow logs
 tf.get_logger().setLevel('WARNING')
 
-"""
-Set the level of the bprint function.
-0 - debug
-1 - info
-2 - success
-3 - warning
-4 - error
-5 - mute everything
-"""
-bprint_console_level = 1
+# setup globals
+script_dir = Path(__file__).resolve().parent
+
+# Set the level of the bprint function.
+# 0 - debug
+# 1 - info
+# 2 - success
+# 3 - warning
+# 4 - error
+# 5 - mute everything
+bprint_console_level = 0
 bprint_logging_level = 0
+
+
 
 # Utility functions
 def utility_init_logging():
@@ -65,7 +67,7 @@ def utility_show_model_summary(model: Sequential):
 
 def bprint(text, indent=0, level="info", show="", **kwargs):
     """
-    Written by BK with help from ChatGPT
+    Written by BK with very little help from ChatGPT
     Function that prints the text with indentation and level.
     """
     # if bprint_level is not set, set it to 1 (debug)
@@ -233,7 +235,7 @@ def preprocessing_get_filelist(data_fdir_path: Path) -> dict:
 
 def preprocessing_train_test_split(fdict: dict, test_size: float = 0.2) -> tuple:
     """
-    Written by BK
+    Written by BK with a bit of help by ChatGPT
     Function that splits the file list into train and test sets.
     """
     bprint("Splitting the file list into train and test sets", level="starting")
@@ -340,21 +342,21 @@ def preprocessing_get_dict_tensors(fdict: dict, grid_identifier: str) -> tuple:
             except Exception as e:
                 bprint(f"Error opening file {value}: {e}", indent=3, level="error")
                 return None
-        
+
         bprint(f"Final tensor shape: {final_tensor.shape}", indent=4, level="debug")
         # Check if the final tensor contains any channels (axis 2) that are empty
         if np.any(np.all(final_tensor == 0, axis=(0, 1))):
             bprint(f"Final tensor contains empty channels", indent=3, level="error")
             raise ValueError("Final tensor contains empty channels")
-        
+
         # Assert the shape of the data
         if final_tensor.shape != expected_shape:
             bprint(f"Final Tensor shape does not match expected shape: {final_tensor.shape} != {expected_shape}", indent=3, level="error")
             return None
-        
+
         bprint(f"Final tensor shape matches expected shape: {final_tensor.shape} == {expected_shape}", indent=1, level="debug", show="success")
         return final_tensor
-    
+
     global bprint_console_level
 
     # Get the tensors from the dictionary
@@ -373,6 +375,7 @@ def preprocessing_get_dict_tensors(fdict: dict, grid_identifier: str) -> tuple:
 
 def preprocessing_prepare_training_data(path: Path) -> None:
     """
+    Written by BK
     Build the training data from raw dataset by loading file lists, 
     splitting into train/test sets, and creating the training tensors.
 
@@ -441,13 +444,17 @@ def preprocessing_prepare_training_data(path: Path) -> None:
     return 
 
 def preprocess_force_rebuild():
+    """
+    Function that forces the rebuild of the npy tensors.
+    This function is called when the script is run with the --force_rebuild flag.
+    """
     bprint("Session mode: {session_mode} - Rebuilding the npy tensors", level="info")
     bprint("This will delete all existing npy tensors", level="warning")
     input("Press Enter to confirm this action...")
     # Rebuild the npy tensors
     preprocessing_prepare_training_data(Path("data/static"))
     bprint("Npy tensors rebuilt successfully", level="success")
-    exit(0)
+    return
 
 # Model compilation functions
 def compilation_model_01(input_shape: tuple) -> Sequential:
@@ -608,7 +615,7 @@ def compilation_model_03(input_shape: tuple, learning_rate: float = 0.001) -> Se
 def main_process_train_model(script_dir, args, session_mode):
     bprint(f"Session mode: {session_mode} - Training model", level="info")
 
-        # Check if data dir contains tensors
+    # Check if data dir contains tensors
     final_tensor_X_train = script_dir / "data" / "final_tensor_X_train.npy"
     if not final_tensor_X_train.is_file():
         bprint("Tensors not found, requiring rebuild, please run the script with --mode force_rebuild first", level="critical")
@@ -622,19 +629,19 @@ def main_process_train_model(script_dir, args, session_mode):
     final_tensor_y_train = np.load("data/final_tensor_y_train.npy")
     bprint("Final tensors training data loaded successfully", level="success")
 
-        # get the number of tiles in the training set
+    # get the number of tiles in the training set
     train_tiles_number = final_tensor_X_train.shape[0]
     bprint(f"Number of tiles in the training set: {train_tiles_number}", level="info")
 
-        # Initialize the model
+    # Initialize the model
     bprint("Initializing the model", level="starting")
     model = compilation_model_03(input_shape=(train_tiles_number, 1000, 1000, 6), learning_rate=args.learning_rate)
     utility_show_model_summary(model)
     bprint("Model initialized successfully", level="success")
 
-        # Train the model
+    # Train the model
     bprint("Training the model", level="starting")
-        # Limit GPU memory usage
+    # Limit GPU memory usage
     gpus = list_physical_devices('GPU')
     if gpus:
         try:
@@ -647,14 +654,14 @@ def main_process_train_model(script_dir, args, session_mode):
         except RuntimeError as e:
             bprint(f"Error setting GPU memory limit: {e}", level="error")
 
-        # Set memory growth for GPUs
+    # Set memory growth for GPUs
     for gpu in gpus:
         try:
             set_memory_growth(gpu, True)
         except RuntimeError as e:
             bprint(f"Error setting memory growth: {e}", level="error")
 
-        # Train the model with GPU
+    # Train the model with GPU
     bprint("Training the model with GPU", level="starting")
         # Check if GPU is available
     if not tf.config.list_physical_devices('GPU'):
@@ -662,18 +669,28 @@ def main_process_train_model(script_dir, args, session_mode):
     else:
         bprint("GPU available, training on GPU", level="success")
         
-        # Train the model
+    # Train the model
     bprint("MAIN: Training the model", level="starting")
     with tf.device('/GPU:0'):
-        model.fit(final_tensor_X_train, final_tensor_y_train, epochs=args.epochs, batch_size=args.batch_size)
+        history = model.fit(final_tensor_X_train, final_tensor_y_train, epochs=args.epochs, batch_size=args.batch_size, validation_split=0.2)
     bprint("Model trained successfully", level="success")
 
-        # Save the model
+    # Save the model
     bprint("Saving the model", level="starting")
     model.save("models/final_model.keras")
     bprint("Model saved successfully", level="success")
 
-        # Clear the session
+    # Save the history
+    # convert the history.history dict to a pandas DataFrame:
+    hist_df = pd.DataFrame(history.history)
+
+    # save to csv: 
+    hist_csv_file = 'history.csv'
+    with open(hist_csv_file, mode='w') as f:
+        hist_df.to_csv(f)
+    bprint("History saved successfully", level="success")
+
+    # Clear the session
     bprint("Clearing the session", level="starting")
     keras.backend.clear_session()
     bprint("Session cleared successfully", level="success")
@@ -681,13 +698,13 @@ def main_process_train_model(script_dir, args, session_mode):
 def main_process_test_model(session_mode):
     bprint(f"Session mode: {session_mode} - Testing model", level="starting")
 
-        # Load the model
+    # Load the model
     bprint("Loading the model", level="starting")
     model = keras.models.load_model("models/final_model.keras")
     bprint("Model loaded successfully", level="success")
 
 
-        # Evaluate on test data
+    # Evaluate on test data
     try:
         bprint("Loading test data", level="starting")
         final_tensor_X_test = np.load("data/final_tensor_X_test.npy")

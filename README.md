@@ -1,5 +1,5 @@
-# 2025 KI Seminar
-Main repositoriy for the final project of the KI-Seminar at RUB.
+# 2025 AI Seminar
+Main repositoriy for the final project of the AI-Seminar at RUB.
 
 # Project Structure
 The project is structured as follows:
@@ -60,4 +60,14 @@ Flags:
 - `-e` or `--epochs`: The number of epochs to train the model. Default is 10.
 - `-b` or `--batch_size`: The batch size to use for training. Default is 32.
 - `-l` or `--learning_rate`: The learning rate to use for training. Default is 0.001.
-- `--force_rebuild`: Force the model to be rebuilt. This is useful only if you have changed the raw data eg. reduced/expanded the area of interest. 
+- `--force_rebuild`: Force the model to be rebuilt. This is useful only if you have changed the raw data eg. changed the area of interest. 
+
+
+# Example Commands
+These are some example commands to run the script - the third command is the one that was used to get the result on the poster.
+
+```bash
+python final_model.py -m "test" -b 2 --learning_rate 0.001 -e 7
+python final_model.py -m "both" -b 3 --learning_rate 0.0005 -e 30
+python final_model.py -m "both" -b 2 --learning_rate 0.0001 -e 200
+```
