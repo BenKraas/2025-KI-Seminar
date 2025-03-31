@@ -1,5 +1,3 @@
-# final layout for the model - this time I have a dataset with many tiles, thus I need to do partial fitting
-
 # Imports
 import copy
 import logging
@@ -11,15 +9,13 @@ import rasterio as rio
 import re
 import tensorflow as tf
 import time
-
 from pathlib import Path
 from tensorflow import keras
 from tensorflow.keras import layers, models
 from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization, Input, UpSampling2D
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization, Input, UpSampling2D, Concatenate, LeakyReLU
 from tensorflow.keras.optimizers import Adam
 from tensorflow.config.experimental import list_physical_devices, set_memory_growth
-
 
 # Set the logging level to WARNING to suppress TensorFlow logs
 tf.get_logger().setLevel('WARNING')
@@ -36,7 +32,6 @@ script_dir = Path(__file__).resolve().parent
 # 5 - mute everything
 bprint_console_level = 0
 bprint_logging_level = 0
-
 
 
 # Utility functions
@@ -425,7 +420,6 @@ def preprocessing_prepare_training_data(path: Path) -> None:
 
             bprint(f"Data inserted into final tensor for grid {grid_identifier}", level="debug")
 
-
     # Convert the final tensor to a numpy array
     bprint("Converting the final tensor to a numpy array", level="starting")
     for key, value in final_tensors.items():
@@ -538,17 +532,12 @@ def weighted_mse(y_true, y_pred):
 
 def compilation_model_03(input_shape: tuple, learning_rate: float = 0.001) -> Sequential:
     """
-    Mainly written by Claude Sonnet 3.7
+    Model written with UNET paper and help from Claude Sonnet
     Enhanced preprocessing model with better initialization, skip connections,
     and improved activation functions to prevent the "black field" problem.
     It takes as input a 4D tensor of shape (item_id, height, width, channels) and outputs a tensor of shape (height, width, 1).
     """
-    from tensorflow.keras.models import Sequential, Model
-    from tensorflow.keras.layers import Conv2D, MaxPooling2D, UpSampling2D, Dropout, Input, Concatenate, BatchNormalization, LeakyReLU
-    from tensorflow.keras.optimizers import Adam
-    import tensorflow as tf
-    
-    bprint("Creating improved model with skip connections and better activations", level="starting")
+    bprint("Starting model compilation", level="starting")
     
     # Use functional API instead of Sequential for skip connections
     inputs = Input(shape=input_shape[1:])
@@ -612,7 +601,11 @@ def compilation_model_03(input_shape: tuple, learning_rate: float = 0.001) -> Se
 
 
 # Main process functions
-def main_process_train_model(script_dir, args, session_mode):
+def main_process_train_model(script_dir, args):
+    """
+    Main process for training the model
+    """
+    global session_mode
     bprint(f"Session mode: {session_mode} - Training model", level="info")
 
     # Check if data dir contains tensors
@@ -695,14 +688,17 @@ def main_process_train_model(script_dir, args, session_mode):
     keras.backend.clear_session()
     bprint("Session cleared successfully", level="success")
 
-def main_process_test_model(session_mode):
+def main_process_test_model():
+    """
+    Main process for testing the model
+    """
+    global session_mode
     bprint(f"Session mode: {session_mode} - Testing model", level="starting")
 
     # Load the model
     bprint("Loading the model", level="starting")
     model = keras.models.load_model("models/final_model.keras")
     bprint("Model loaded successfully", level="success")
-
 
     # Evaluate on test data
     try:
@@ -782,25 +778,26 @@ def cli_parser():
     args = parser.parse_args()
     return args
 
+
+# Main section
 if __name__ == "__main__":
-    # Written by BK with only little help from ChatGPT
+
     # clear the terminal
     os.system('cls' if os.name == 'nt' else 'clear')
-    tf.get_logger().setLevel('WARNING')
     utility_init_logging()
     bprint("Starting the script", level="starting")
 
     # Parse the command line arguments
     args = cli_parser()
-
     session_mode = args.mode
+
     if args.force_rebuild:
         session_mode = "force_rebuild"
         preprocess_force_rebuild()
 
     if session_mode == "train" or session_mode == "both":
-        main_process_train_model(script_dir, args, session_mode)
+        main_process_train_model(script_dir, args)
 
     if session_mode == "test" or session_mode == "both":
-        main_process_test_model(session_mode)
+        main_process_test_model()
         
